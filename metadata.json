@@ -1,0 +1,10 @@
+{
+  "name": "CSL Attendance",
+  "description": "An attendance taking app with secure, non-reusable QR codes and Google Sheets logging.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
