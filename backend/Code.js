@@ -28,6 +28,7 @@ function findSheet(ss, names) {
 }
 
 function getSheet(ss, sheetName) {
+  if (!ss) return null;
   let candidates = [sheetName];
   if (sheetName === USERS_SHEET_NAME || sheetName === 'users' || sheetName === 'user') {
     candidates = USER_SHEET_CANDIDATES;
@@ -49,21 +50,74 @@ function getSheet(ss, sheetName) {
 
 function getSpreadsheet(sheetId) {
   if (sheetId) {
-    return SpreadsheetApp.openById(sheetId);
+    try {
+      return SpreadsheetApp.openById(sheetId);
+    } catch (e) {
+      console.warn("Could not open sheet by id " + sheetId + ": " + e);
+    }
   }
   const savedId = PropertiesService.getScriptProperties().getProperty('ACTIVE_SHEET_ID');
   if (savedId) {
-    return SpreadsheetApp.openById(savedId);
+    try {
+      return SpreadsheetApp.openById(savedId);
+    } catch (e) {
+      console.warn("Could not open saved active sheet " + savedId + ": " + e);
+    }
   }
-  return SpreadsheetApp.getActiveSpreadsheet();
+  try {
+    return SpreadsheetApp.getActiveSpreadsheet();
+  } catch (e) {
+    return null;
+  }
 }
 
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents);
-    const action = data.action; // 'user', 'log', 'createSheet', 'verifySheet', 'searchSheets', 'getActiveSheet'
+    const action = data.action; // 'user', 'log', 'createSheet', 'verifySheet', 'searchSheets', 'getActiveSheet', 'verifyPassword', 'setPassword'
     const values = data.values;
     const sheetId = data.sheetId;
+
+    if (action === 'verifyPassword' || action === 'checkPassword' || action === 'login') {
+      const scriptProps = PropertiesService.getScriptProperties();
+      const adminPassword = scriptProps.getProperty('ADMIN_PASSWORD') || 
+                            scriptProps.getProperty('admin_password') || 
+                            scriptProps.getProperty('ADMIN_PASS') || 
+                            scriptProps.getProperty('adminPassword') || 
+                            scriptProps.getProperty('PASSWORD') || '';
+      
+      const inputPassword = (data.password !== undefined && data.password !== null) ? String(data.password).trim() : '';
+      const isValid = Boolean(adminPassword && inputPassword === adminPassword.trim());
+      
+      return ContentService.createTextOutput(JSON.stringify({ 
+        success: isValid, 
+        valid: isValid,
+        hasPasswordSet: Boolean(adminPassword)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (action === 'setPassword') {
+      const scriptProps = PropertiesService.getScriptProperties();
+      const currentPassword = scriptProps.getProperty('ADMIN_PASSWORD') || 
+                              scriptProps.getProperty('admin_password') || 
+                              scriptProps.getProperty('PASSWORD') || '';
+      const oldPassword = (data.oldPassword !== undefined && data.oldPassword !== null) ? String(data.oldPassword).trim() : '';
+      const newPassword = (data.newPassword !== undefined && data.newPassword !== null) ? String(data.newPassword).trim() : '';
+      
+      if (!newPassword) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'New password cannot be empty' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      if (currentPassword && oldPassword !== currentPassword.trim()) {
+        return ContentService.createTextOutput(JSON.stringify({ success: false, error: 'Current password incorrect' }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
+      
+      scriptProps.setProperty('ADMIN_PASSWORD', newPassword);
+      return ContentService.createTextOutput(JSON.stringify({ success: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     if (action === 'getActiveSheet') {
       const savedId = PropertiesService.getScriptProperties().getProperty('ACTIVE_SHEET_ID');
@@ -155,13 +209,20 @@ function doPost(e) {
     }
     
     const ss = getSpreadsheet(sheetId);
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({ error: 'No active spreadsheet configured. Please link or create a sheet in Settings.' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     let sheetName = '';
     if (action === 'user') sheetName = USERS_SHEET_NAME;
     else if (action === 'log') sheetName = LOGS_SHEET_NAME;
     
     if (sheetName) {
       const sheet = getSheet(ss, sheetName);
-      sheet.appendRow(values);
+      if (sheet) {
+        sheet.appendRow(values);
+      }
     }
     
     return ContentService.createTextOutput(JSON.stringify({ success: true }))
@@ -176,7 +237,28 @@ function doGet(e) {
   try {
     const type = e.parameter.type;
     const sheetId = e.parameter.sheetId;
+
+    if (type === 'verifyPassword' || type === 'checkPassword') {
+      const scriptProps = PropertiesService.getScriptProperties();
+      const adminPassword = scriptProps.getProperty('ADMIN_PASSWORD') || 
+                            scriptProps.getProperty('admin_password') || 
+                            scriptProps.getProperty('ADMIN_PASS') || 
+                            scriptProps.getProperty('adminPassword') || 
+                            scriptProps.getProperty('PASSWORD') || '';
+      const inputPassword = (e.parameter.password !== undefined && e.parameter.password !== null) ? String(e.parameter.password).trim() : '';
+      const isValid = Boolean(adminPassword && inputPassword === adminPassword.trim());
+      return ContentService.createTextOutput(JSON.stringify({ 
+        success: isValid, 
+        valid: isValid,
+        hasPasswordSet: Boolean(adminPassword)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     const ss = getSpreadsheet(sheetId);
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({ data: [], warning: 'No active spreadsheet configured' }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     let sheetName = '';
     if (type === 'users') sheetName = USERS_SHEET_NAME;
@@ -184,6 +266,10 @@ function doGet(e) {
     
     if (sheetName) {
       const sheet = getSheet(ss, sheetName);
+      if (!sheet) {
+        return ContentService.createTextOutput(JSON.stringify({ data: [] }))
+          .setMimeType(ContentService.MimeType.JSON);
+      }
       const data = sheet.getDataRange().getDisplayValues();
       // Remove header row
       if (data.length > 0) data.shift();

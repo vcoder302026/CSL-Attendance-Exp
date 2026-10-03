@@ -659,20 +659,92 @@ app.use('/api/events', requireAdmin);
 app.use('/api/approve-registration', requireAdmin);
 
 
-  app.post('/api/login', (req, res) => {
+  app.post('/api/login', async (req, res) => {
     const { password } = req.body;
-    if (password === process.env.ADMIN_PASSWORD) {
-      res.json({ success: true, token: 'admin-token-123' }); // Basic token for this app
-    } else {
-      res.status(401).json({ error: 'Invalid password' });
+    if (password === undefined || password === null) {
+      return res.status(400).json({ error: 'Password is required' });
     }
+
+    const trimmedPassword = String(password).trim();
+    const adminPassword = (process.env.ADMIN_PASSWORD || '').trim();
+
+    // 1. Primary auth: Admin password stored in AI Studio environment variables
+    if (adminPassword) {
+      if (trimmedPassword === adminPassword) {
+        return res.json({ success: true, token: ADMIN_TOKEN });
+      }
+      return res.status(401).json({ error: 'Invalid password' });
+    }
+
+    // 2. Secondary fallback if Apps Script Script Properties has password configured
+    if (!currentScriptUrl) {
+      currentScriptUrl = getAppsScriptUrl();
+    }
+    if (currentScriptUrl) {
+      try {
+        const scriptResponse = await fetch(currentScriptUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'verifyPassword', password: trimmedPassword }),
+          signal: AbortSignal.timeout(15000)
+        });
+
+        if (scriptResponse.ok) {
+          const result = await scriptResponse.json();
+          if (result.valid === true) {
+            return res.json({ success: true, token: ADMIN_TOKEN });
+          } else if (result.valid === false) {
+            return res.status(401).json({ error: 'Invalid password' });
+          }
+        }
+      } catch (err: any) {
+        console.warn('Apps Script password check note:', err?.message || err);
+      }
+    }
+
+    return res.status(401).json({ error: 'Invalid password' });
   });
 
   app.get('/api/settings', (req, res) => {
+    currentScriptUrl = getAppsScriptUrl();
     res.json({ 
       scriptUrl: currentScriptUrl,
       sheetId: currentSheetId
     });
+  });
+
+  app.post('/api/settings/change-password', async (req, res) => {
+    const { oldPassword, newPassword } = req.body;
+    if (!newPassword || !String(newPassword).trim()) {
+      return res.status(400).json({ error: 'New password cannot be empty' });
+    }
+    if (!currentScriptUrl) {
+      currentScriptUrl = getAppsScriptUrl();
+    }
+    if (!currentScriptUrl) {
+      return res.status(400).json({ error: 'No Apps Script URL configured' });
+    }
+
+    try {
+      const response = await fetch(currentScriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'setPassword',
+          oldPassword: (oldPassword || '').trim(),
+          newPassword: String(newPassword).trim()
+        }),
+        signal: AbortSignal.timeout(15000)
+      });
+      const data = await response.json();
+      if (data.success) {
+        return res.json({ success: true, message: 'Password updated in Google Apps Script properties' });
+      } else {
+        return res.status(400).json({ error: data.error || 'Failed to update password' });
+      }
+    } catch (e: any) {
+      return res.status(500).json({ error: 'Failed to communicate with Apps Script: ' + (e?.message || e) });
+    }
   });
 
   app.get('/api/settings/search-sheets', async (req, res) => {
