@@ -1,4 +1,4 @@
-// Run this function ONCE from the Apps Script editor to authorize the script
+// Run this function ONCE from the Apps Script editor to authorize the script 
 function setup() {
   // This explicitly triggers the Drive and Spreadsheet permission prompts
   DriveApp.searchFiles("mimeType='application/vnd.google-apps.spreadsheet'");
