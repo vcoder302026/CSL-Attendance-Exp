@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { QrCode, User, ScanLine, Clock, Shield, ChevronRight, LogOut, Moon, Download, Plus, Search, CheckCircle2, LayoutDashboard, MonitorSmartphone, Settings, Eye, EyeOff, Home, UserPlus, AlertCircle, RefreshCw, Trash2, UserCheck, AlertTriangle, X, Check, Calendar } from 'lucide-react';
 import { cn } from './lib/utils';
+import { AttendanceHoursSummary } from './AttendanceHoursSummary';
 
 // Types
 type ScanLog = {
@@ -403,7 +404,7 @@ function RoleSelectionView({ onSelect }: { onSelect: (role: 'KIOSK' | 'ADMIN') =
 // ADMIN DASHBOARD COMPONENT
 // ----------------------------------------------------------------------
 function AdminDashboard({ onExit, adminToken, isOverlay = false, isDark, toggleDark }: { onExit: () => void, adminToken: string, isOverlay?: boolean, isDark?: boolean, toggleDark?: () => void }) {
-  const [activeTab, setActiveTab] = useState<'LOGS' | 'USERS' | 'SETTINGS'>('LOGS');
+  const [activeTab, setActiveTab] = useState<'LOGS' | 'HOURS' | 'USERS' | 'SETTINGS'>('LOGS');
   
   const [sheetId, setSheetId] = useState('');
   const [sheetIdMessage, setSheetIdMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
@@ -902,6 +903,12 @@ function AdminDashboard({ onExit, adminToken, isOverlay = false, isDark, toggleD
               Scan Logs
             </button>
             <button
+              onClick={() => setActiveTab('HOURS')}
+              className={cn("flex-1 sm:flex-none px-6 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap", activeTab === 'HOURS' ? "bg-white dark:bg-neutral-700 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-slate-600 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white")}
+            >
+              Attendance & Hours
+            </button>
+            <button
               onClick={() => setActiveTab('USERS')}
               className={cn("flex-1 sm:flex-none px-6 py-2.5 rounded-lg text-sm font-semibold transition-all whitespace-nowrap", activeTab === 'USERS' ? "bg-white dark:bg-neutral-700 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-slate-600 dark:text-neutral-400 hover:text-slate-900 dark:hover:text-white")}
             >
@@ -1032,6 +1039,12 @@ function AdminDashboard({ onExit, adminToken, isOverlay = false, isDark, toggleD
               </div>
             </div>
           </div>
+        ) : activeTab === 'HOURS' ? (
+          <AttendanceHoursSummary
+            logs={logs}
+            isLoading={isLoadingLogs}
+            onRefresh={() => loadLogs(false)}
+          />
         ) : activeTab === 'SETTINGS' ? (
           <div className="flex-1 flex flex-col gap-6">
             <div className="bg-white dark:bg-neutral-950 rounded-2xl border border-slate-200 dark:border-neutral-900 shadow-xl p-6 max-w-2xl w-full">
